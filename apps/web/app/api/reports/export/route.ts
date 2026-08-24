@@ -4,9 +4,12 @@ import { createServiceClient } from "@/lib/supabase/server";
 import Papa from "papaparse";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { subDays, subWeeks, subMonths, format } from "date-fns";
+import { subDays, subWeeks, subMonths, format, parseISO } from "date-fns";
 
-function getDateRange(period: string) {
+function getDateRange(period: string, startDate?: string, endDate?: string) {
+  if (startDate && endDate) {
+    return { start: parseISO(startDate), end: parseISO(endDate) };
+  }
   const end = new Date();
   let start: Date;
   switch (period) {
@@ -29,7 +32,9 @@ export async function GET(request: NextRequest) {
 
   const period = request.nextUrl.searchParams.get("period") ?? "weekly";
   const formatType = request.nextUrl.searchParams.get("format") ?? "csv";
-  const { start, end } = getDateRange(period);
+  const startDateParam = request.nextUrl.searchParams.get("start_date") ?? undefined;
+  const endDateParam = request.nextUrl.searchParams.get("end_date") ?? undefined;
+  const { start, end } = getDateRange(period, startDateParam, endDateParam);
 
   const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", user.id).single();
   if (!profile?.organization_id) return NextResponse.json({ error: "No organization" }, { status: 400 });
@@ -72,18 +77,27 @@ export async function GET(request: NextRequest) {
     organization_id: profile.organization_id,
     created_by: user.id,
     period: period as "daily" | "weekly" | "monthly",
-    format: formatType as "csv" | "pdf",
+    format: "export",
     start_date: format(start, "yyyy-MM-dd"),
     end_date: format(end, "yyyy-MM-dd"),
     metadata: { bin_count: rows.length, alert_count: alerts?.length ?? 0 },
   });
+
+  if (formatType === "json") {
+    return NextResponse.json({
+      rows,
+      alert_count: alerts?.length ?? 0,
+      start_date: format(start, "yyyy-MM-dd"),
+      end_date: format(end, "yyyy-MM-dd"),
+    });
+  }
 
   if (formatType === "pdf") {
     const doc = new jsPDF();
     doc.setFontSize(18);
     doc.text("Sortyx Intelligence Platform", 14, 20);
     doc.setFontSize(12);
-    doc.text(`${period} report: ${format(start, "yyyy-MM-dd")} — ${format(end, "yyyy-MM-dd")}`, 14, 30);
+    doc.text(`Report: ${format(start, "yyyy-MM-dd")} — ${format(end, "yyyy-MM-dd")}`, 14, 30);
     autoTable(doc, {
       startY: 40,
       head: [["Device", "Location", "Status", "Avg Fill %", "Data Points"]],
@@ -94,7 +108,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse(pdfBuffer, {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="sortyx-${period}.pdf"`,
+        "Content-Disposition": `attachment; filename="sortyx-report.pdf"`,
       },
     });
   }
@@ -103,7 +117,7 @@ export async function GET(request: NextRequest) {
   return new NextResponse(csv, {
     headers: {
       "Content-Type": "text/csv",
-      "Content-Disposition": `attachment; filename="sortyx-${period}.csv"`,
+      "Content-Disposition": `attachment; filename="sortyx-report.csv"`,
     },
   });
 }

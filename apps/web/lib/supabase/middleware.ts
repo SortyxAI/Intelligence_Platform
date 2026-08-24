@@ -31,7 +31,7 @@ export async function updateSession(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
   const isAuthRoute = path.startsWith("/login") || path.startsWith("/signup");
-  const isPublic = path === "/" || isAuthRoute;
+  const isPublic = isAuthRoute;
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
@@ -39,7 +39,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && isAuthRoute) {
+  if (user && (isAuthRoute || path === "/")) {
     const { data: p } = await supabase
       .from("profiles")
       .select("role")

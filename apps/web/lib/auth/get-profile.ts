@@ -11,7 +11,7 @@ export const getProfile = cache(async function getProfile(): Promise<Profile | n
 
   const { data } = await supabase
     .from("profiles")
-    .select("id, email, full_name, role, organization_id, customer_id, fcm_token, notify_email, notify_telegram, telegram_chat_id")
+    .select("id, email, full_name, role, organization_id, customer_id, fcm_token, notify_email, notify_telegram, notify_whatsapp, telegram_chat_id, phone")
     .eq("id", user.id)
     .maybeSingle();
 

@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  const allowedFields = ["notify_email", "notify_telegram", "full_name"];
+  const allowedFields = ["notify_email", "notify_telegram", "notify_whatsapp", "full_name", "phone"];
   const updates: Record<string, unknown> = {};
 
   for (const key of allowedFields) {

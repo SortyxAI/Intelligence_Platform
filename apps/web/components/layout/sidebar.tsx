@@ -15,12 +15,14 @@ import {
   Users,
   ShieldCheck,
   BookOpen,
+  Route,
   Settings,
   LogOut,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
 import { useState } from "react";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 
 interface NavItem {
   href: string;
@@ -32,6 +34,7 @@ const adminNav: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/bins", label: "Bins", icon: Trash2 },
   { href: "/admin/bin-auth", label: "Bin Auth", icon: ShieldCheck },
+  { href: "/analytics/route-optimization", label: "Route Optimization", icon: Route },
   { href: "/reports", label: "Reports", icon: FileText },
   { href: "/admin/customers", label: "Customers", icon: Users },
   { href: "/manual", label: "Manual", icon: BookOpen },
@@ -41,6 +44,7 @@ const adminNav: NavItem[] = [
 const customerNav: NavItem[] = [
   { href: "/portal", label: "Dashboard", icon: LayoutDashboard },
   { href: "/portal/bins", label: "My Bins", icon: Trash2 },
+  { href: "/portal/analytics/route-optimization", label: "Route Optimization", icon: Route },
   { href: "/portal/reports", label: "Reports", icon: FileText },
   { href: "/portal/settings", label: "Settings", icon: Settings },
 ];
@@ -117,6 +121,7 @@ export function Sidebar({ profile }: { profile: Profile }) {
             </div>
           )}
         </div>
+        <ThemeToggle collapsed={collapsed} />
         <Button
           variant="ghost"
           size={collapsed ? "icon" : "sm"}

@@ -32,5 +32,7 @@ export type Profile = {
   fcm_token: string | null;
   notify_email: boolean;
   notify_telegram: boolean;
+  notify_whatsapp: boolean;
   telegram_chat_id: string | null;
+  phone: string | null;
 };

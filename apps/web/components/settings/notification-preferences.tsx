@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, MessageCircle } from "lucide-react";
 import type { Profile } from "@/lib/auth/rbac";
 import { createClient } from "@/lib/supabase/client";
 
@@ -21,7 +22,7 @@ export function NotificationPreferences() {
       if (!user) { setLoading(false); return; }
       const { data } = await supabase
         .from("profiles")
-        .select("id, email, full_name, role, organization_id, customer_id, fcm_token, notify_email, notify_telegram, telegram_chat_id")
+        .select("id, email, full_name, role, organization_id, customer_id, fcm_token, notify_email, notify_telegram, notify_whatsapp, telegram_chat_id, phone")
         .eq("id", user.id)
         .single();
       setProfile(data as Profile);
@@ -30,7 +31,7 @@ export function NotificationPreferences() {
     load();
   }, []);
 
-  async function toggle(field: "notify_email" | "notify_telegram", value: boolean): Promise<void> {
+  async function toggle(field: "notify_email" | "notify_telegram" | "notify_whatsapp", value: boolean): Promise<void> {
     if (!profile) return;
     setSaving(field);
     setError(null);
@@ -45,6 +46,16 @@ export function NotificationPreferences() {
       setProfile({ ...profile, [field]: !value });
     }
     setSaving(null);
+  }
+
+  async function savePhone(phone: string) {
+    if (!profile) return;
+    setProfile({ ...profile, phone });
+    await fetch("/api/profile/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone }),
+    });
   }
 
   if (loading) {
@@ -101,6 +112,46 @@ export function NotificationPreferences() {
               onCheckedChange={(v) => toggle("notify_telegram", v)}
               disabled={saving === "notify_telegram" || !profile?.telegram_chat_id}
             />
+          </div>
+        </div>
+
+        <div className="border-t pt-6">
+          <div className="flex items-center gap-2 mb-4">
+            <MessageCircle className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">WhatsApp Notifications</span>
+          </div>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="phone" className="text-xs">Phone Number (with country code)</Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="+1234567890"
+                value={profile?.phone ?? ""}
+                onChange={(e) => savePhone(e.target.value)}
+                className="text-sm max-w-xs"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="notify_whatsapp" className="text-xs">WhatsApp Alerts</Label>
+                <p className="text-xs text-muted-foreground">
+                  {profile?.phone
+                    ? "Receive alerts via WhatsApp (free via CallMeBot)"
+                    : "Enter your phone number above to enable"}
+                </p>
+              </div>
+              <Switch
+                id="notify_whatsapp"
+                checked={profile?.notify_whatsapp ?? false}
+                onCheckedChange={(v) => toggle("notify_whatsapp", v)}
+                disabled={saving === "notify_whatsapp" || !profile?.phone}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              First time? Message <code className="bg-accent px-1 rounded">I allow callmebot</code> to{" "}
+              <strong>+34 684 36 57 64</strong> on WhatsApp to activate free alerts.
+            </p>
           </div>
         </div>
       </CardContent>

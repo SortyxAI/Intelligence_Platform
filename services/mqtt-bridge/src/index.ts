@@ -246,14 +246,14 @@ async function sendNotifications(
 ) {
   const { data: admins } = await supabase
     .from("profiles")
-    .select("email, telegram_chat_id, notify_email, notify_telegram")
+    .select("email, telegram_chat_id, phone, notify_email, notify_telegram, notify_whatsapp")
     .eq("organization_id", organizationId)
     .eq("role", "admin");
 
   const { data: customer } = customerId
     ? await supabase
         .from("profiles")
-        .select("email, telegram_chat_id, notify_email, notify_telegram")
+        .select("email, telegram_chat_id, phone, notify_email, notify_telegram, notify_whatsapp")
         .eq("customer_id", customerId)
         .single()
     : { data: null };
@@ -310,6 +310,16 @@ async function sendNotifications(
           if (!res.ok) log.warn({ telegram: user.telegram_chat_id, status: res.status }, "Telegram send failed");
         } catch (err) {
           log.error({ telegram: user.telegram_chat_id, err }, "Telegram send error");
+        }
+      }
+
+      if (user.notify_whatsapp && user.phone) {
+        try {
+          const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(user.phone)}&text=${encodeURIComponent(`⚠️ ${severity} — ${text}`)}&apikey=${process.env.CALLMEBOT_API_KEY ?? ""}`;
+          const res = await fetch(url);
+          if (!res.ok) log.warn({ phone: user.phone, status: res.status }, "WhatsApp send failed");
+        } catch (err) {
+          log.error({ phone: user.phone, err }, "WhatsApp send error");
         }
       }
     }

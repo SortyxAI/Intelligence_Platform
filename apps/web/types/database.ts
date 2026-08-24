@@ -31,6 +31,7 @@ export interface Database {
           telegram_chat_id: string | null;
           notify_email: boolean;
           notify_telegram: boolean;
+          notify_whatsapp: boolean;
         };
       };
     };
