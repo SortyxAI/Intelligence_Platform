@@ -8,190 +8,139 @@ import {
   execGetCompartments,
 } from "@/lib/chat/tools";
 
-const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const MODEL = "openai/gpt-oss-120b";
+const MODEL = "@cf/qwen/qwen3-30b-a3b-fp8";
 
-type ToolParam = {
-  type: string;
-  properties?: Record<string, { type: string; description: string }>;
-};
+const SYSTEM_PROMPT = `You are Sortyx AI, a friendly and knowledgeable assistant for the Sortyx smart waste management platform — like ChatGPT, but specialized for this product.
 
-const tools: Record<string, {
-  description: string;
-  parameters: ToolParam;
-  execute: (args: Record<string, unknown>) => Promise<{ result: unknown; summary: string }>;
-}> = {
-  get_dashboard_stats: {
-    description: "Get a quick overview dashboard summary: total bins, active/offline/maintenance counts, unresolved alerts, customer count.",
-    parameters: { type: "object" },
-    execute: execGetDashboardStats,
-  },
-  get_bins: {
-    description: "Search and filter bins by status, customer name, fill level range, location, or device ID.",
-    parameters: {
-      type: "object",
-      properties: {
-        status: { type: "string", description: "Filter by status: active, offline, maintenance, decommissioned" },
-        customer_name: { type: "string", description: "Filter by customer name (partial match)" },
-        fill_min: { type: "number", description: "Minimum fill level percentage (0-100)" },
-        fill_max: { type: "number", description: "Maximum fill level percentage (0-100)" },
-        location: { type: "string", description: "Filter by location name (partial match)" },
-        device_id: { type: "string", description: "Filter by device ID (partial match)" },
-      },
-    },
-    execute: execGetBins,
-  },
-  get_alerts: {
-    description: "Search and filter alerts by severity, bin device ID, date range, or resolved status.",
-    parameters: {
-      type: "object",
-      properties: {
-        severity: { type: "string", description: "Filter by severity: low, medium, high, critical" },
-        bin_device_id: { type: "string", description: "Filter by bin device ID (partial match)" },
-        from_date: { type: "string", description: "Start date (ISO 8601 or YYYY-MM-DD)" },
-        to_date: { type: "string", description: "End date (ISO 8601 or YYYY-MM-DD)" },
-        resolved: { type: "boolean", description: "true for resolved alerts, false for unresolved" },
-        limit: { type: "number", description: "Maximum alerts to return (default 50)" },
-      },
-    },
-    execute: execGetAlerts,
-  },
-  get_telemetry: {
-    description: "Get telemetry history for a specific bin (fill level, weight, battery, sensor status over time).",
-    parameters: {
-      type: "object",
-      properties: {
-        bin_device_id: { type: "string", description: "Bin device ID to query (required)" },
-        from_date: { type: "string", description: "Start date (ISO 8601 or YYYY-MM-DD)" },
-        to_date: { type: "string", description: "End date (ISO 8601 or YYYY-MM-DD)" },
-        limit: { type: "number", description: "Maximum records to return (default 20)" },
-      },
-    },
-    execute: execGetTelemetry,
-  },
-  get_customers: {
-    description: "Get all customers with their bin counts and active bin counts.",
-    parameters: { type: "object" },
-    execute: execGetCustomers,
-  },
-  get_compartments: {
-    description: "Get compartment-level fill data for a specific bin.",
-    parameters: {
-      type: "object",
-      properties: {
-        bin_device_id: { type: "string", description: "Bin device ID to query compartments for (required)" },
-      },
-    },
-    execute: execGetCompartments,
-  },
-};
-
-function openAITools() {
-  return Object.entries(tools).map(([name, tool]) => ({
-    type: "function" as const,
-    function: {
-      name,
-      description: tool.description,
-      parameters: tool.parameters,
-    },
-  }));
-}
-
-const SYSTEM_PROMPT = `You are Sortyx AI, a helpful assistant for the Sortyx smart waste management platform.
-
-You help users understand their bin data, alerts, telemetry, and customers.
+Below the conversation you will be given a DATA CONTEXT containing real, live information pulled from the Sortyx database (bins, alerts, customers, etc.).
 
 Rules:
-- Answer clearly and concisely using the data you retrieve.
-- When showing numbers, provide context (e.g. "3 out of 12 bins are full" rather than just "3 bins").
-- If you don't have enough data to answer, say so honestly.
-- If a user asks something outside the platform data, politely redirect to what you can help with.
-- Format responses with markdown for readability (bold for numbers, bullet lists for multiple items).
-- Always use the provided functions to get real data — never make up numbers.
-- The current date is ${new Date().toISOString().split("T")[0]}.`;
+- Answer in a natural, conversational, helpful tone — like ChatGPT would.
+- Base every factual claim on the DATA CONTEXT. Never invent numbers or bins that aren't in the context.
+- Respond ONLY to what the user asked. Be short, simple and direct — no extra preamble, no summaries unless asked.
+- Never output <think> tags or show your reasoning. Just give the final answer.
+- If the context has the information, give a clear, specific answer. Use markdown tables or bullet lists when listing multiple items.
+- If the context does NOT contain what the user asked for, say you couldn't find it in the current data and suggest what they could ask instead.
+- Use bold for key numbers when helpful.
+- Today's date is ${new Date().toISOString().split("T")[0]}.`;
 
-async function groqFetch(messages: { role: string; content: string; tool_call_id?: string; tool_calls?: unknown[] }[]) {
-  const res = await fetch(GROQ_API_URL, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      tools: openAITools(),
-      tool_choice: "auto",
-      temperature: 0.3,
-    }),
-  });
+type ToolResponse = { summary: string; result: unknown };
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Groq API error (${res.status}): ${err}`);
+function extractDeviceId(text: string): string | null {
+  const m = text.match(/\b(bin[-_]?[a-z0-9]{2,}|[a-z]{2,}-\d{3,}|\d{4,})\b/i);
+  return m ? m[1] : null;
+}
+
+async function retrieveContext(question: string): Promise<string> {
+  const q = question.toLowerCase();
+  const blocks: string[] = [];
+
+  const add = async (label: string, fn: () => Promise<ToolResponse>) => {
+    try {
+      const r = await fn();
+      blocks.push(
+        `### ${label}\n${r.summary}\n\`\`\`json\n${JSON.stringify(r.result, null, 2)}\n\`\`\``,
+      );
+    } catch (e) {
+      blocks.push(`### ${label}\n(error retrieving data)`);
+    }
+  };
+
+  await add("Dashboard Overview", execGetDashboardStats);
+
+  if (/(alert|critical|warning|criti|issue|problem)/.test(q)) {
+    await add("Critical Alerts", () =>
+      execGetAlerts({ severity: "critical", resolved: false, limit: 25 }),
+    );
+    await add("Unresolved Alerts", () => execGetAlerts({ resolved: false, limit: 25 }));
   }
 
-  return res.json();
+  if (/(bin|full|fill|offline|maintenance|status|level)/.test(q)) {
+    await add("Bins", () => execGetBins({}));
+  }
+
+  if (/(customer|client|account)/.test(q)) {
+    await add("Customers", execGetCustomers);
+  }
+
+  const deviceId = extractDeviceId(question);
+  if (/(compartment|section|slot)/.test(q) && deviceId) {
+    await add(`Compartments (${deviceId})`, () => execGetCompartments({ bin_device_id: deviceId }));
+  }
+  if (/(telemetry|history|sensor|reading|trend)/.test(q) && deviceId) {
+    await add(`Telemetry (${deviceId})`, () =>
+      execGetTelemetry({ bin_device_id: deviceId, limit: 20 }),
+    );
+  }
+
+  return blocks.join("\n\n");
+}
+
+function buildPrompt(messages: { role: string; content: string }[], context: string) {
+  const conversation = messages
+    .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+    .join("\n");
+  return `${SYSTEM_PROMPT}
+
+=== DATA CONTEXT (real Sortyx data — use this to answer) ===
+${context}
+=== END DATA CONTEXT ===
+
+Conversation:
+${conversation}
+Assistant:`;
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { messages: clientMessages } = await request.json();
-
-    if (!process.env.GROQ_API_KEY) {
-      return NextResponse.json({ error: "GROQ_API_KEY not configured" }, { status: 500 });
+    if (!process.env.CF_ACCOUNT_ID || !process.env.CF_API_KEY) {
+      return NextResponse.json({ error: "Cloudflare AI not configured" }, { status: 500 });
     }
 
-    const msgs: { role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string }[] = [
-      { role: "system", content: SYSTEM_PROMPT },
-    ];
-
-    const firstUserIdx = clientMessages.findIndex((m: { role: string }) => m.role === "user");
-    const relevant = firstUserIdx >= 0 ? clientMessages.slice(firstUserIdx) : [];
-
-    for (const m of relevant) {
-      msgs.push({ role: m.role === "assistant" ? "assistant" : "user", content: m.content ?? "" });
+    const body = await request.json();
+    const messages: { role: string; content: string }[] = body.messages ?? [];
+    if (!messages.length) {
+      return NextResponse.json({ error: "No messages provided" }, { status: 400 });
     }
 
-    const userMsg = msgs.pop()!;
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    const question = lastUser?.content ?? "";
 
-    let data = await groqFetch([...msgs, userMsg]);
-    let choice = data.choices?.[0];
+    const context = await retrieveContext(question);
+    const prompt = buildPrompt(messages, context);
 
-    let turnCount = 0;
-    while (choice?.finish_reason === "tool_calls" && turnCount < 5) {
-      turnCount++;
-      const toolCalls = choice.message.tool_calls ?? [];
-      msgs.push(choice.message);
-      msgs.push(userMsg);
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${process.env.CF_ACCOUNT_ID}/ai/run/${MODEL}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.CF_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ prompt }),
+      },
+    );
 
-      for (const tc of toolCalls) {
-        const tool = tools[tc.function.name];
-        if (!tool) {
-          msgs.push({ role: "tool", tool_call_id: tc.id, content: `Unknown tool: ${tc.function.name}` });
-          continue;
-        }
-        let args: Record<string, unknown> = {};
-        try { args = JSON.parse(tc.function.arguments); } catch { args = {}; }
-        const { result, summary } = await tool.execute(args);
-        msgs.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: JSON.stringify({ result, summary }),
-        });
-      }
-
-      data = await groqFetch(msgs);
-      choice = data.choices?.[0];
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Cloudflare AI error (${res.status}): ${err}`);
     }
 
-    const text = choice?.message?.content ?? "Sorry, I couldn't process that request.";
-    return NextResponse.json({ message: { role: "assistant", content: text } });
+    const data = await res.json();
+    let content: string =
+      data?.result?.response ?? data?.response ?? "Sorry, I couldn't process that.";
+
+    content = content
+      .replace(/<think>[\s\S]*?<\/think>/gi, "")
+      .replace(/^\s*think\s*$/i, "")
+      .trim();
+
+    return NextResponse.json({ message: { role: "assistant", content } });
   } catch (err) {
     console.error("Chat API error:", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

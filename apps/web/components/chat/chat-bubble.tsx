@@ -108,10 +108,10 @@ export function ChatBubble() {
               key={i}
               className={cn(
                 "flex gap-2 text-sm",
-                msg.role === "user" ? "justify-end" : "justify-start"
+                msg?.role === "user" ? "justify-end" : "justify-start"
               )}
             >
-              {msg.role === "assistant" && (
+              {msg?.role === "assistant" && (
                 <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10">
                   <Bot className="h-3.5 w-3.5 text-primary" />
                 </div>
@@ -119,7 +119,7 @@ export function ChatBubble() {
               <div
                 className={cn(
                   "max-w-[85%] rounded-lg px-3 py-2 leading-relaxed",
-                  msg.role === "user"
+msg?.role === "user"
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted/50 border"
                 )}
@@ -128,7 +128,7 @@ export function ChatBubble() {
                   <Markdown content={msg.content} />
                 </div>
               </div>
-              {msg.role === "user" && (
+              {msg?.role === "user" && (
                 <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary">
                   <User className="h-3.5 w-3.5 text-primary-foreground" />
                 </div>
@@ -181,7 +181,7 @@ export function ChatBubble() {
             </Button>
           </div>
           <p className="mt-1 text-[10px] text-muted-foreground text-center">
-            Powered by Google Gemini — responses are AI-generated
+            Powered by Cloudflare Workers AI — responses are AI-generated
           </p>
         </div>
       </div>
