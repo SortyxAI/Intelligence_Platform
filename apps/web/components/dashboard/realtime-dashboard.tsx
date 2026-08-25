@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import Link from "next/link";
 import { formatDate, formatRelativeTime, cn } from "@/lib/utils";
-import { Bell, MapPin, Users, ActivityIcon, Clock, RefreshCw, ArrowUpRight, CheckCircle2, Eye, X, Trash2 } from "lucide-react";
+import { Bell, MapPin, Users, ActivityIcon, Clock, RefreshCw, ArrowUpRight, CheckCircle2, Eye, X, Trash2, Leaf, Recycle, IndianRupee } from "lucide-react";
 
 type Alert = {
   id: string;
@@ -43,6 +43,7 @@ const TYPE_OPTIONS = ["all", "full_bin", "offline", "sensor_failure", "camera_fa
 export function RealtimeDashboard({
   initialBins,
   initialKpis,
+  initialEnvKpis,
   initialAlerts,
   initialActivity,
   initialBinsByCustomer,
@@ -55,12 +56,18 @@ export function RealtimeDashboard({
     offlineBins: number;
     authenticatedBins: number;
   };
+  initialEnvKpis: {
+    totalWeightKg: number;
+    totalCo2eAvoidedKg: number;
+    totalEstimatedValueInr: number;
+  };
   initialAlerts: Alert[];
   initialActivity: Activity[];
   initialBinsByCustomer: { name: string; bins: string[] }[];
 }) {
   const [bins, setBins] = useState(initialBins);
   const [kpis, setKpis] = useState(initialKpis);
+  const [envKpis, setEnvKpis] = useState(initialEnvKpis);
   const [alerts, setAlerts] = useState(initialAlerts);
   const [activity, setActivity] = useState(initialActivity);
   const [binsByCustomer, setBinsByCustomer] = useState(initialBinsByCustomer);
@@ -141,6 +148,20 @@ export function RealtimeDashboard({
       .on("postgres_changes", { event: "*", schema: "public", table: "alerts" }, () => refreshData())
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "telemetry_events" }, () => refreshData())
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "activity_log" }, () => refreshData())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "waste_records" }, (payload) => {
+        const row = payload.new as {
+          weight_kg: number | null;
+          co2e_avoided_kg: number | null;
+          estimated_value_inr: number | null;
+        };
+        setEnvKpis((prev) => ({
+          totalWeightKg: prev.totalWeightKg + (Number(row.weight_kg) || 0),
+          totalCo2eAvoidedKg:
+            prev.totalCo2eAvoidedKg + (row.co2e_avoided_kg != null ? Number(row.co2e_avoided_kg) : 0),
+          totalEstimatedValueInr:
+            prev.totalEstimatedValueInr + (row.estimated_value_inr != null ? Number(row.estimated_value_inr) : 0),
+        }));
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [supabase, refreshData]);
@@ -329,6 +350,35 @@ export function RealtimeDashboard({
       {/* KPI Cards */}
       <KpiCards data={kpis} />
 
+      {/* Environmental Impact summary (all-time) */}
+      <div>
+        <div className="mb-2 flex items-center gap-2">
+          <Leaf className="h-4 w-4 text-emerald-500" />
+          <h2 className="text-sm font-semibold">Environmental Impact</h2>
+          <span className="text-xs text-muted-foreground">All-time</span>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <EnvCard
+            icon={Recycle}
+            title="Total Waste"
+            value={`${envKpis.totalWeightKg.toLocaleString("en-IN", { maximumFractionDigits: 2 })} kg`}
+            tone="text-foreground"
+          />
+          <EnvCard
+            icon={Leaf}
+            title="CO₂e Avoided"
+            value={`${envKpis.totalCo2eAvoidedKg.toLocaleString("en-IN", { maximumFractionDigits: 2 })} kg CO₂e`}
+            tone="text-emerald-600 dark:text-emerald-400"
+          />
+          <EnvCard
+            icon={IndianRupee}
+            title="Estimated Material Value"
+            value={`₹${envKpis.totalEstimatedValueInr.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            tone="text-primary"
+          />
+        </div>
+      </div>
+
       {/* Bento Grid: Map + Activity + Bins by Customer */}
       <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-4">
         {/* Map - spans 2 cols */}
@@ -438,5 +488,30 @@ export function RealtimeDashboard({
         </Card>
       </div>
     </div>
+  );
+}
+
+function EnvCard({
+  icon: Icon,
+  title,
+  value,
+  tone,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  value: string;
+  tone: string;
+}) {
+  return (
+    <Card variant="glass" className="relative overflow-hidden">
+      <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+      <div className="p-4">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-muted-foreground">{title}</span>
+          <Icon className="h-4 w-4 text-muted-foreground/30" />
+        </div>
+        <div className={cn("mt-2 text-2xl font-semibold tracking-tight", tone)}>{value}</div>
+      </div>
+    </Card>
   );
 }

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { RealtimeDashboard } from "@/components/dashboard/realtime-dashboard";
 import type { BinMapMarker } from "@/components/maps/bin-map";
 
@@ -11,13 +11,33 @@ export default async function DashboardPage() {
     { count: alertCount },
     { data: alerts },
     { data: activity },
+    { data: authData },
   ] = await Promise.all([
     supabase.from("bins").select("id, device_id, latitude, longitude, status, latest_fill_level, location_name, customers(name)"),
     supabase.from("bins").select("*", { count: "exact", head: true }).not("api_key", "is", null),
     supabase.from("alerts").select("*", { count: "exact", head: true }).is("resolved_at", null),
     supabase.from("alerts").select("id, alert_type, severity, message, created_at, acknowledged_at, resolved_at, bins(device_id)").is("resolved_at", null).order("created_at", { ascending: false }).limit(5),
     supabase.from("activity_log").select("id, action, details, created_at, bins(device_id)").order("created_at", { ascending: false }).limit(8),
+    supabase.auth.getUser(),
   ]);
+
+  const orgId = authData?.user
+    ? (await supabase.from("profiles").select("organization_id").eq("id", authData.user.id).single()).data?.organization_id ?? null
+    : null;
+
+  let initialEnvKpis = { totalWeightKg: 0, totalCo2eAvoidedKg: 0, totalEstimatedValueInr: 0 };
+  if (orgId) {
+    const service = await createServiceClient();
+    const { data: envRows } = await service.rpc("get_env_impact_totals", { p_org_id: orgId });
+    const t = Array.isArray(envRows) ? envRows[0] : envRows;
+    if (t) {
+      initialEnvKpis = {
+        totalWeightKg: Number(t.total_weight ?? 0),
+        totalCo2eAvoidedKg: Number(t.total_co2e ?? 0),
+        totalEstimatedValueInr: Number(t.total_value ?? 0),
+      };
+    }
+  }
 
   const fullBins = bins?.filter((b) => (b.latest_fill_level ?? 0) >= 85).length ?? 0;
   const offlineBins = (bins?.filter((b) => b.status === "offline" || b.status === "unregistered").length ?? 0);
@@ -55,6 +75,7 @@ export default async function DashboardPage() {
         offlineBins,
         authenticatedBins: authenticatedBins ?? 0,
       }}
+      initialEnvKpis={initialEnvKpis}
       initialAlerts={alerts ?? []}
       initialActivity={activity ?? []}
       initialBinsByCustomer={binsByCustomer}

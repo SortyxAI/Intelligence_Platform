@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { FileText, Download, Loader2, Table2, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
+import { EnvironmentalImpact } from "@/components/environment/environmental-impact";
 import {
   Select,
   SelectContent,
@@ -205,6 +206,8 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <EnvironmentalImpact />
     </div>
   );
 }

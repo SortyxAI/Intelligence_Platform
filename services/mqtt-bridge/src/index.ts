@@ -4,6 +4,12 @@ import { createClient } from "@supabase/supabase-js";
 import pino from "pino";
 import { createServer } from "http";
 import { telemetryPayloadSchema, type TelemetryPayload } from "@sortyx/shared";
+import {
+  resolveMaterial,
+  computeWasteImpact,
+  dominantClassificationCategory,
+  type MaterialConfigRow,
+} from "@sortyx/shared";
 import WebSocket from "ws";
 import { startTtnClient } from "./ttn-mqtt.js";
 
@@ -37,6 +43,32 @@ const DEDUPE_MINUTES = 15;
 const OFFLINE_THRESHOLD_MS = 10 * 60 * 1000;
 const FULL_BIN_THRESHOLD = 85;
 const LOW_BATTERY_THRESHOLD = 20;
+
+const MATERIAL_CACHE_TTL_MS = 5 * 60 * 1000;
+const materialConfigCache = new Map<string, MaterialConfigRow | null>();
+let materialConfigCacheAt = 0;
+
+async function getMaterialConfig(material: string): Promise<MaterialConfigRow | null> {
+  if (Date.now() - materialConfigCacheAt > MATERIAL_CACHE_TTL_MS || !materialConfigCache.has(material)) {
+    const { data } = await supabase
+      .from("material_config")
+      .select("material, category, co2e_factor, rate_per_kg, method, source, is_proxy");
+    materialConfigCache.clear();
+    for (const r of data ?? []) {
+      materialConfigCache.set(r.material, {
+        material: r.material,
+        category: r.category,
+        co2e_factor: r.co2e_factor != null ? Number(r.co2e_factor) : null,
+        rate_per_kg: r.rate_per_kg != null ? Number(r.rate_per_kg) : null,
+        method: r.method,
+        source: r.source,
+        is_proxy: r.is_proxy,
+      });
+    }
+    materialConfigCacheAt = Date.now();
+  }
+  return materialConfigCache.get(material) ?? null;
+}
 
 const recentAlerts = new Map<string, number>();
 
@@ -107,20 +139,74 @@ export async function processTelemetryPayload(data: TelemetryPayload) {
     0
   );
 
-  await supabase.from("telemetry_events").insert({
-    bin_id: bin.id,
-    organization_id: bin.organization_id,
-    recorded_at: recordedAt,
-    fill_level: maxFill,
-    weight_kg: totalWeight,
-    waste_count: totalWaste,
-    camera_status: data.cameraStatus ?? null,
-    sensor_health: data.sensorHealth ?? null,
-    internet_status: data.internetStatus ?? null,
-    battery_percent: data.batteryPercent,
-    compartments: data.compartments,
-    raw_payload: data,
-  });
+  const { data: insertedTelemetry } = await supabase
+    .from("telemetry_events")
+    .insert({
+      bin_id: bin.id,
+      organization_id: bin.organization_id,
+      recorded_at: recordedAt,
+      fill_level: maxFill,
+      weight_kg: totalWeight,
+      waste_count: totalWaste,
+      camera_status: data.cameraStatus ?? null,
+      sensor_health: data.sensorHealth ?? null,
+      internet_status: data.internetStatus ?? null,
+      battery_percent: data.batteryPercent,
+      compartments: data.compartments,
+      raw_payload: data,
+    })
+    .select("id")
+    .single();
+
+  const telemetryEventId = insertedTelemetry?.id ?? null;
+
+  // Environmental Impact: derive a waste record from the dominant material + total weight.
+  // Wrapped so a failure here never blocks alert generation.
+  try {
+    if (telemetryEventId && totalWeight > 0) {
+      const dominantCat = dominantClassificationCategory(
+        data.compartments.map((c) => c.classification ?? {})
+      );
+      if (dominantCat) {
+        const material = resolveMaterial(dominantCat);
+        if (material) {
+          const cfg = await getMaterialConfig(material);
+          if (cfg) {
+            const impact = computeWasteImpact({
+              material: cfg.material,
+              category: cfg.category,
+              weightKg: totalWeight,
+              co2eFactor: cfg.co2e_factor,
+              ratePerKg: cfg.rate_per_kg,
+              method: cfg.method,
+              source: cfg.source,
+              isProxy: cfg.is_proxy,
+            });
+            await supabase.from("waste_records").insert({
+              organization_id: bin.organization_id,
+              bin_id: bin.id,
+              telemetry_event_id: telemetryEventId,
+              material: impact.material,
+              category: impact.category,
+              weight_kg: impact.weightKg,
+              co2e_factor_used: impact.co2eFactorUsed,
+              co2e_avoided_kg: impact.co2eAvoidedKg,
+              rate_per_kg_used: impact.ratePerKgUsed,
+              estimated_value_inr: impact.estimatedValueInr,
+              calculation_method: impact.calculationMethod,
+              source: impact.source,
+              is_proxy: impact.isProxy,
+              recorded_at: recordedAt,
+            });
+          } else {
+            log.warn({ material }, "Material factor not configured - skipping waste record");
+          }
+        }
+      }
+    }
+  } catch (e) {
+    log.error(e, "Failed to create waste record");
+  }
 
   const updatePayload: Record<string, unknown> = {
     last_seen_at: recordedAt,
