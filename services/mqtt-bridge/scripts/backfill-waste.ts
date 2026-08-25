@@ -3,6 +3,7 @@
 // Uses SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY from the bridge .env.
 import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
+import WebSocket from "ws";
 import {
   resolveMaterial,
   computeWasteImpact,
@@ -12,7 +13,8 @@ import {
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { realtime: { transport: WebSocket as never } }
 );
 
 async function loadMaterialConfig(): Promise<Map<string, MaterialConfigRow>> {
