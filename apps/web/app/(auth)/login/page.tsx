@@ -47,7 +47,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm animate-scale-in">
         <div className="text-center mb-8">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl glass">
-            <Image src="/logo.png" alt="Sortyx" width={44} height={44} className="object-contain" />
+            <Image src="/logo.png" alt="Sortyx" width={44} height={44} className="h-11 w-11 object-contain" />
           </div>
           <h1 className="text-xl font-semibold">Welcome back</h1>
           <p className="mt-1 text-sm text-muted-foreground">Sign in to your Sortyx account</p>

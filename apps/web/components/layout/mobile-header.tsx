@@ -83,7 +83,7 @@ export function MobileHeader({ profile }: { profile: Profile }) {
             <SheetContent side="left" className="w-64 p-0">
               <div className="flex h-14 items-center gap-2.5 border-b px-4">
                 <div className="relative h-7 w-7 shrink-0">
-                  <Image src="/logo.png" alt="Sortyx" fill className="object-contain" />
+                  <Image src="/logo.png" alt="Sortyx" fill sizes="28px" className="object-contain" />
                 </div>
                 <span className="text-sm font-semibold tracking-tight">Sortyx</span>
               </div>
@@ -135,7 +135,7 @@ export function MobileHeader({ profile }: { profile: Profile }) {
           <span className="text-sm font-semibold">{pageTitle}</span>
         </div>
         <div className="relative h-7 w-7">
-          <Image src="/logo.png" alt="Sortyx" fill className="object-contain" />
+          <Image src="/logo.png" alt="Sortyx" fill sizes="28px" className="object-contain" />
         </div>
       </header>
 

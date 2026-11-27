@@ -4,7 +4,8 @@ import { redirect, notFound } from "next/navigation";
 import { canManageBins } from "@/lib/auth/rbac";
 import { CustomerForm } from "@/components/customers/customer-form";
 
-export default async function EditCustomerPage({ params }: { params: { id: string } }) {
+export default async function EditCustomerPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const profile = await getProfile();
   if (!profile || !canManageBins(profile.role)) redirect("/dashboard");
   if (!profile.organization_id) redirect("/dashboard");
@@ -13,7 +14,7 @@ export default async function EditCustomerPage({ params }: { params: { id: strin
   const { data: customer } = await supabase
     .from("customers")
     .select("id, name, email, phone, address")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   if (!customer) notFound();

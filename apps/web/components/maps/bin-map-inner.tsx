@@ -6,7 +6,6 @@ import "leaflet/dist/leaflet.css";
 import "@/lib/leaflet-setup";
 import Link from "next/link";
 import type { BinMapMarker } from "./bin-map";
-import { MapShell } from "./map-shell";
 
 const defaultCenter: [number, number] = [27.4728, 89.6390];
 
@@ -53,7 +52,7 @@ export default function BinMapInner({ markers }: { markers: BinMapMarker[] }) {
     valid.length > 0 ? [valid[0].latitude, valid[0].longitude] : defaultCenter;
 
   return (
-    <MapShell className="h-[420px] w-full">
+    <div className="relative z-0 h-[420px] w-full">
       <MapContainer
         center={center}
         zoom={valid.length > 1 ? 13 : 14}
@@ -116,6 +115,6 @@ export default function BinMapInner({ markers }: { markers: BinMapMarker[] }) {
           No bins with GPS coordinates yet. Set location when adding a bin.
         </p>
       )}
-    </MapShell>
+    </div>
   );
 }

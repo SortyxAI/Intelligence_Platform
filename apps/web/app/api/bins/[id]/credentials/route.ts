@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { randomBytes } from "crypto";
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   const { data: bin } = await service
     .from("bins")
     .select("api_key, mqtt_username, mqtt_password, credentials_updated_at")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   if (!bin || !bin.api_key) {
@@ -37,7 +38,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   });
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -56,7 +58,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   const { data: bin } = await service
     .from("bins")
     .select("id, device_id, organization_id, api_key")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
   if (!bin) {
     return NextResponse.json({ error: "Bin not found" }, { status: 404 });
@@ -74,7 +76,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       mqtt_password: mqttPassword,
       credentials_updated_at: new Date().toISOString(),
     })
-    .eq("id", params.id);
+    .eq("id", id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
@@ -91,7 +93,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   return NextResponse.json({ apiKey, mqttUsername, mqttPassword });
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -110,7 +113,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
   const { data: bin } = await service
     .from("bins")
     .select("id, device_id, organization_id")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
   if (!bin) {
     return NextResponse.json({ error: "Bin not found" }, { status: 404 });
@@ -124,7 +127,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       mqtt_password: null,
       credentials_updated_at: new Date().toISOString(),
     })
-    .eq("id", params.id);
+    .eq("id", id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });

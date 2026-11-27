@@ -78,7 +78,7 @@ export function Sidebar({ profile }: { profile: Profile }) {
     >
       <div className={cn("flex h-14 items-center border-b border-white/10 dark:border-white/5", collapsed ? "justify-center px-0" : "gap-2.5 px-4")}>
         <div className="relative h-7 w-7 shrink-0">
-          <Image src="/logo.png" alt="Sortyx" fill className="object-contain" />
+          <Image src="/logo.png" alt="Sortyx" fill sizes="28px" className="object-contain" />
         </div>
         {!collapsed && (
           <span className="text-sm font-semibold tracking-tight">Sortyx</span>

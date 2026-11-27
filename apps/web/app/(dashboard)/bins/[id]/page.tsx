@@ -3,23 +3,24 @@ import { getProfile } from "@/lib/auth/get-profile";
 import { notFound } from "next/navigation";
 import { BinDetailView } from "@/components/bins/bin-detail-view";
 
-export default async function BinDetailPage({ params }: { params: { id: string } }) {
+export default async function BinDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const supabase = await createClient();
   const profile = await getProfile();
 
-  const { data: bin } = await supabase.from("bins").select("*").eq("id", params.id).single();
+  const { data: bin } = await supabase.from("bins").select("*").eq("id", id).single();
   if (!bin) notFound();
 
   const { data: compartments } = await supabase
     .from("bin_compartments")
     .select("*")
-    .eq("bin_id", params.id)
+    .eq("bin_id", id)
     .order("compartment_index");
 
   const { data: telemetry } = await supabase
     .from("telemetry_events")
     .select("recorded_at, fill_level, weight_kg, battery_percent")
-    .eq("bin_id", params.id)
+    .eq("bin_id", id)
     .order("recorded_at", { ascending: false })
     .limit(48);
 
