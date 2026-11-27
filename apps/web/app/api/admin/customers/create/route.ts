@@ -26,24 +26,17 @@ export async function POST(request: NextRequest) {
 
   const service = await createServiceClient();
 
-  const authRes = await fetch(
-    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
-      },
-      body: JSON.stringify({ email, password, email_confirm: true }),
-    }
-  );
-  const authData = await authRes.json();
-  if (!authRes.ok) {
+  const { data: authData, error: authError } = await service.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+  if (authError || !authData.user) {
     return NextResponse.json({
-      error: "auth: " + JSON.stringify(authData),
+      error: "auth: " + (authError?.message ?? "User creation failed"),
     }, { status: 400 });
   }
+  const authUserId = authData.user.id;
 
   const { data: customer, error: customerError } = await service
     .from("customers")
@@ -51,7 +44,7 @@ export async function POST(request: NextRequest) {
     .select("id")
     .single();
   if (customerError) {
-    try { await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${authData.id}`, { method: "DELETE", headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}` } }); } catch {}
+    try { await service.auth.admin.deleteUser(authUserId); } catch {}
     return NextResponse.json({ error: "customer: " + customerError.message }, { status: 400 });
   }
 
@@ -62,9 +55,9 @@ export async function POST(request: NextRequest) {
       organization_id: admin.organization_id,
       customer_id: customer.id,
     })
-    .eq("id", authData.id);
+    .eq("id", authUserId);
   if (profileError) {
-    try { await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${authData.id}`, { method: "DELETE", headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}` } }); } catch {}
+    try { await service.auth.admin.deleteUser(authUserId); } catch {}
     try { await service.from("customers").delete().eq("id", customer.id); } catch {}
     return NextResponse.json({ error: "profile: " + profileError.message }, { status: 400 });
   }

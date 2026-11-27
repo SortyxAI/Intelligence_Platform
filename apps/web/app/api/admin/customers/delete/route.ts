@@ -38,10 +38,7 @@ export async function POST(request: NextRequest) {
 
   for (const p of profiles ?? []) {
     try {
-      await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${p.id}`,
-        { method: "DELETE", headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}` } }
-      );
+      await service.auth.admin.deleteUser(p.id);
     } catch {}
     try { await service.from("profiles").delete().eq("id", p.id); } catch {}
   }
