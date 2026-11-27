@@ -19,7 +19,7 @@ SELECT
   u.id,
   u.email,
   COALESCE(u.raw_user_meta_data->>'full_name', split_part(u.email, '@', 1)),
-  'admin'::user_role,
+  'admin'::public.user_role,
   'a0000000-0000-4000-8000-000000000001'
 FROM auth.users u
 WHERE u.email = 'assassinnightcap008@gmail.com'

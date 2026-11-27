@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
-import { registerFcmToken } from "@/lib/firebase/client";
 import { createClient } from "@/lib/supabase/client";
 
 export function FcmRegister() {
   useEffect(() => {
+    if (process.env.NEXT_PUBLIC_FCM_ENABLED !== "true") return;
+
     async function setup() {
       try {
+        const { registerFcmToken } = await import("@/lib/firebase/client");
         const token = await registerFcmToken();
         if (!token) return;
         const supabase = createClient();

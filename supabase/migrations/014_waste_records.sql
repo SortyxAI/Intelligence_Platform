@@ -3,7 +3,7 @@
 -- later edits to material_config never change historical calculations.
 
 CREATE TABLE IF NOT EXISTS waste_records (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   bin_id UUID REFERENCES bins(id) ON DELETE SET NULL,
   telemetry_event_id UUID REFERENCES telemetry_events(id) ON DELETE SET NULL,

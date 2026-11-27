@@ -4,7 +4,7 @@
 -- and surfaced in the UI as "unavailable" rather than being invented.
 
 CREATE TABLE IF NOT EXISTS material_config (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   material TEXT NOT NULL UNIQUE,
   category TEXT NOT NULL,
   co2e_factor NUMERIC(10,4),

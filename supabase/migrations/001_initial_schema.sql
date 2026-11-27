@@ -1,7 +1,5 @@
 -- Sortyx Intelligence Platform - Initial Schema
 
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
 -- Enums
 CREATE TYPE user_role AS ENUM ('admin', 'customer');
 CREATE TYPE bin_type AS ENUM ('two', 'four');
@@ -13,7 +11,7 @@ CREATE TYPE report_format AS ENUM ('csv', 'pdf');
 
 -- Organizations
 CREATE TABLE organizations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   slug TEXT UNIQUE NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -22,7 +20,7 @@ CREATE TABLE organizations (
 
 -- Customers (business entities within org)
 CREATE TABLE customers (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   email TEXT,
@@ -48,7 +46,7 @@ CREATE TABLE profiles (
 
 -- Bins
 CREATE TABLE bins (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
   device_id TEXT UNIQUE NOT NULL,
@@ -74,7 +72,7 @@ CREATE TABLE bins (
 
 -- Bin compartments
 CREATE TABLE bin_compartments (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   bin_id UUID NOT NULL REFERENCES bins(id) ON DELETE CASCADE,
   compartment_index INT NOT NULL CHECK (compartment_index >= 0 AND compartment_index <= 3),
   label TEXT NOT NULL,
@@ -88,7 +86,7 @@ CREATE TABLE bin_compartments (
 
 -- Telemetry events
 CREATE TABLE telemetry_events (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   bin_id UUID NOT NULL REFERENCES bins(id) ON DELETE CASCADE,
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -110,7 +108,7 @@ CREATE INDEX idx_telemetry_org_recorded ON telemetry_events(organization_id, rec
 
 -- Alerts
 CREATE TABLE alerts (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   bin_id UUID NOT NULL REFERENCES bins(id) ON DELETE CASCADE,
   compartment_id UUID REFERENCES bin_compartments(id) ON DELETE SET NULL,
@@ -130,7 +128,7 @@ CREATE INDEX idx_alerts_bin ON alerts(bin_id, created_at DESC);
 
 -- Bin ads (digital signage)
 CREATE TABLE bin_ads (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   bin_id UUID NOT NULL REFERENCES bins(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   image_url TEXT,
@@ -141,7 +139,7 @@ CREATE TABLE bin_ads (
 
 -- Activity log
 CREATE TABLE activity_log (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   bin_id UUID REFERENCES bins(id) ON DELETE SET NULL,
   user_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
@@ -154,7 +152,7 @@ CREATE INDEX idx_activity_org ON activity_log(organization_id, created_at DESC);
 
 -- Reports
 CREATE TABLE reports (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   created_by UUID REFERENCES profiles(id),
   period report_period NOT NULL,
@@ -189,7 +187,7 @@ ORDER BY b.id, t.recorded_at DESC NULLS LAST;
 
 -- Helper functions for RLS
 CREATE OR REPLACE FUNCTION public.get_user_role()
-RETURNS user_role AS $$
+RETURNS public.user_role AS $$
   SELECT role FROM profiles WHERE id = auth.uid();
 $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
@@ -214,11 +212,11 @@ BEGIN
     NEW.id,
     NEW.email,
     COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
-    COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'customer')
+    'customer'::public.user_role
   );
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users

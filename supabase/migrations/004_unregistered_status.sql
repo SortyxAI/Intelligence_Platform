@@ -10,10 +10,6 @@ BEGIN
   END IF;
 END $$;
 
--- Set existing bins that have never received telemetry to 'unregistered'
-UPDATE bins SET status = 'unregistered'
-WHERE status = 'active' AND last_seen_at IS NULL;
-
 -- Clear fake health defaults on bins with no real telemetry
 UPDATE bins SET
   camera_status = NULL,
