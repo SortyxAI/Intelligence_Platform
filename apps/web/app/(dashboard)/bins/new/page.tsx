@@ -11,10 +11,11 @@ export default async function NewBinPage() {
   }
 
   const supabase = await createClient();
-  const { data: customers } = await supabase
-    .from("customers")
-    .select("id, name")
-    .order("name");
+  const [{ data: customers }, { data: compartmentLabelRows }] = await Promise.all([
+    supabase.from("customers").select("id, name").order("name"),
+    supabase.from("bin_compartments").select("label").order("label"),
+  ]);
+  const compartmentLabelOptions = [...new Set((compartmentLabelRows ?? []).map(({ label }) => label.trim()).filter(Boolean))];
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -22,7 +23,11 @@ export default async function NewBinPage() {
         <h1 className="text-3xl font-bold">Add bin</h1>
         <p className="text-muted-foreground">Register a new smart waste bin</p>
       </div>
-      <BinForm customers={customers ?? []} organizationId={profile.organization_id!} />
+      <BinForm
+        customers={customers ?? []}
+        organizationId={profile.organization_id!}
+        compartmentLabelOptions={compartmentLabelOptions}
+      />
     </div>
   );
 }

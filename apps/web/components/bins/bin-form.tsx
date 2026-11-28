@@ -26,22 +26,39 @@ const COMPARTMENT_LABELS: Record<string, string[]> = {
   four: ["Plastic", "General", "Paper", "Metal"],
 };
 
+const CUSTOM_LABEL_OPTION = "__custom_compartment_label__";
+
+type BinType = keyof typeof COMPARTMENT_LABELS;
+type CompartmentDraft = { label: string; custom: boolean };
+
 const UNASSIGNED_CUSTOMER = "__unassigned__";
 
 export function BinForm({
   customers,
   organizationId,
   initial,
+  initialCompartments = [],
+  compartmentLabelOptions = [],
 }: {
   customers: { id: string; name: string }[];
   organizationId: string;
   initial?: Record<string, unknown>;
+  initialCompartments?: { compartment_index: number; label: string }[];
+  compartmentLabelOptions?: string[];
 }) {
   const router = useRouter();
   const isEdit = Boolean(initial?.id);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [binType, setBinType] = useState<"one" | "two" | "three" | "four">((initial?.bin_type as "one" | "two" | "three" | "four") ?? "two");
+  const initialBinType = (initial?.bin_type as BinType) ?? "two";
+  const [binType, setBinType] = useState<BinType>(initialBinType);
+  const [compartments, setCompartments] = useState<CompartmentDraft[]>(() => {
+    const labelsByIndex = new Map(initialCompartments.map(({ compartment_index, label }) => [compartment_index, label]));
+    return COMPARTMENT_LABELS[initialBinType].map((defaultLabel, index) => ({
+      label: labelsByIndex.get(index) ?? defaultLabel,
+      custom: false,
+    }));
+  });
   const [lat, setLat] = useState((initial?.latitude as number) ?? 27.4728);
   const [lng, setLng] = useState((initial?.longitude as number) ?? 89.639);
   const [deviceId, setDeviceId] = useState((initial?.device_id as string) ?? "");
@@ -53,11 +70,40 @@ export function BinForm({
   );
   const [binHeight, setBinHeight] = useState<number>((initial?.bin_height as number) ?? 100);
 
+  const availableCompartmentLabels = [...new Set([
+    ...compartmentLabelOptions,
+    ...Object.values(COMPARTMENT_LABELS).flat(),
+    ...initialCompartments.map(({ label }) => label),
+  ].map((label) => label.trim()).filter(Boolean))];
+
+  function updateCompartment(index: number, patch: Partial<CompartmentDraft>) {
+    setCompartments((current) => current.map((compartment, compartmentIndex) =>
+      compartmentIndex === index ? { ...compartment, ...patch } : compartment
+    ));
+  }
+
+  function changeBinType(value: string) {
+    const nextType = value as BinType;
+    setBinType(nextType);
+    setCompartments((current) => COMPARTMENT_LABELS[nextType].map((defaultLabel, index) =>
+      current[index] ?? { label: defaultLabel, custom: false }
+    ));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
     const supabase = createClient();
+    const compartmentRows = compartments.map(({ label }, index) => ({
+      compartment_index: index,
+      label: label.trim(),
+    }));
+    if (compartmentRows.some(({ label }) => !label)) {
+      setError("Enter a label for every compartment.");
+      setLoading(false);
+      return;
+    }
 
     const payload = {
       customer_id: customerId === UNASSIGNED_CUSTOMER ? null : customerId,
@@ -79,15 +125,29 @@ export function BinForm({
         return;
       }
 
-      await supabase.from("bin_compartments").delete().eq("bin_id", initial!.id as string);
-      const labels = COMPARTMENT_LABELS[binType];
-      await supabase.from("bin_compartments").insert(
-        labels.map((label, index) => ({
-          bin_id: initial!.id as string,
-          compartment_index: index,
-          label,
-        }))
-      );
+      const binId = initial!.id as string;
+      const { error: compartmentsError } = await supabase
+        .from("bin_compartments")
+        .upsert(
+          compartmentRows.map((compartment) => ({ ...compartment, bin_id: binId })),
+          { onConflict: "bin_id,compartment_index" }
+        );
+      if (compartmentsError) {
+        setError(`Failed to save compartments: ${compartmentsError.message}`);
+        setLoading(false);
+        return;
+      }
+
+      const { error: removedCompartmentsError } = await supabase
+        .from("bin_compartments")
+        .delete()
+        .eq("bin_id", binId)
+        .gte("compartment_index", compartmentRows.length);
+      if (removedCompartmentsError) {
+        setError(`Failed to remove extra compartments: ${removedCompartmentsError.message}`);
+        setLoading(false);
+        return;
+      }
 
       await supabase.from("activity_log").insert({
         organization_id: organizationId,
@@ -120,14 +180,19 @@ export function BinForm({
       return;
     }
 
-    const labels = COMPARTMENT_LABELS[binType];
-    await supabase.from("bin_compartments").insert(
-      labels.map((label, index) => ({
+    const { error: compartmentsError } = await supabase.from("bin_compartments").insert(
+      compartmentRows.map(({ label, compartment_index }) => ({
         bin_id: bin.id,
-        compartment_index: index,
         label,
+        compartment_index,
       }))
     );
+    if (compartmentsError) {
+      await supabase.from("bins").delete().eq("id", bin.id);
+      setError(`Failed to save compartments: ${compartmentsError.message}`);
+      setLoading(false);
+      return;
+    }
 
     await supabase.from("activity_log").insert({
       organization_id: organizationId,
@@ -157,7 +222,7 @@ export function BinForm({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Bin type</Label>
-              <Select value={binType} onValueChange={(v) => setBinType(v as "one" | "two" | "three" | "four")}>
+              <Select value={binType} onValueChange={changeBinType}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -182,6 +247,48 @@ export function BinForm({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+          <div className="space-y-3 rounded-md border p-4">
+            <div>
+              <h2 className="text-sm font-semibold">Compartments</h2>
+              <p className="text-xs text-muted-foreground">Choose a saved label or enter a custom one for each compartment.</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {compartments.map((compartment, index) => (
+                <div key={index} className="space-y-2">
+                  <Label htmlFor={`compartment-label-${index}`}>Compartment {index + 1}</Label>
+                  <Select
+                    value={compartment.custom ? CUSTOM_LABEL_OPTION : compartment.label}
+                    onValueChange={(value) => {
+                      if (value === CUSTOM_LABEL_OPTION) {
+                        updateCompartment(index, { custom: true, label: "" });
+                      } else {
+                        updateCompartment(index, { custom: false, label: value });
+                      }
+                    }}
+                  >
+                    <SelectTrigger id={`compartment-label-${index}`}>
+                      <SelectValue placeholder="Choose a label" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableCompartmentLabels.map((label) => (
+                        <SelectItem key={label} value={label}>{label}</SelectItem>
+                      ))}
+                      <SelectItem value={CUSTOM_LABEL_OPTION}>Custom label</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {compartment.custom && (
+                    <Input
+                      value={compartment.label}
+                      onChange={(event) => updateCompartment(index, { label: event.target.value })}
+                      placeholder="Enter a custom label"
+                      maxLength={80}
+                      required
+                    />
+                  )}
+                </div>
+              ))}
             </div>
           </div>
           <div className="space-y-2">

@@ -10,10 +10,19 @@ export default async function EditBinPage({ params }: { params: Promise<{ id: st
   if (!profile || !canManageBins(profile.role)) redirect("/bins");
 
   const supabase = await createClient();
-  const { data: bin } = await supabase.from("bins").select("*").eq("id", id).single();
+  const [
+    { data: bin },
+    { data: customers },
+    { data: compartments },
+    { data: compartmentLabelRows },
+  ] = await Promise.all([
+    supabase.from("bins").select("*").eq("id", id).single(),
+    supabase.from("customers").select("id, name").order("name"),
+    supabase.from("bin_compartments").select("compartment_index, label").eq("bin_id", id).order("compartment_index"),
+    supabase.from("bin_compartments").select("label").order("label"),
+  ]);
   if (!bin) notFound();
-
-  const { data: customers } = await supabase.from("customers").select("id, name").order("name");
+  const compartmentLabelOptions = [...new Set((compartmentLabelRows ?? []).map(({ label }) => label.trim()).filter(Boolean))];
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -21,7 +30,13 @@ export default async function EditBinPage({ params }: { params: Promise<{ id: st
         <h1 className="text-3xl font-bold">Edit bin</h1>
         <p className="text-muted-foreground">{bin.device_id}</p>
       </div>
-      <BinForm customers={customers ?? []} organizationId={profile.organization_id!} initial={bin as Record<string, unknown>} />
+      <BinForm
+        customers={customers ?? []}
+        organizationId={profile.organization_id!}
+        initial={bin as Record<string, unknown>}
+        initialCompartments={compartments ?? []}
+        compartmentLabelOptions={compartmentLabelOptions}
+      />
     </div>
   );
 }
